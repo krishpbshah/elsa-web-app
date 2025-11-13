@@ -3,3 +3,5 @@ uvicorn
 google-cloud-aiplatform
 google-cloud-storage
 python-dotenv
+werkzeug==3.0.1
+flask==3.0.0
