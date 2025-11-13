@@ -26,9 +26,7 @@ def list_routes():
         })
     return {"routes": routes}
 
-@app.get("/generate")
-def get_generate():
-    return {"error": "Use POST method", "endpoint": "/api/generate"}
+
 
 # --- 1. CONFIGURATION ---
 # These are now read from Vercel's Environment Variables
