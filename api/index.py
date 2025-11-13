@@ -5,63 +5,49 @@ from vertexai.generative_models import GenerativeModel, Part
 from google.cloud import storage
 import uuid
 import os
+import json # New import
+from google.oauth2 import service_account # New import
 from datetime import datetime, timedelta
 
 # This creates your web application
 app = FastAPI()
 
 # --- 1. CONFIGURATION ---
-# These will be set as Environment Variables in Vercel
-PROJECT_ID = os.environ.get("PROJECT_ID", "elsaugc")
-BUCKET_NAME = os.environ.get("BUCKET_NAME", "elsa-ai-training-dataset-bucket")
+# These are now read from Vercel's Environment Variables
+PROJECT_ID = os.environ.get("PROJECT_ID")
+BUCKET_NAME = os.environ.get("BUCKET_NAME")
 LOCATION = "us-central1"
 
-# Your 14 Chibi style images
-CHIBI_STYLE_GUIDE_URIS = [
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_01.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_02.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_03.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_04.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_10.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_15.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_09_dollar.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_09_heart.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_09_sad.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_13_wink.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_13_star.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_13_sleep.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_13_angry.png",
-    f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_20_cropped.png"
-]
+# --- LOAD SERVICE ACCOUNT CREDENTIALS ---
+# This reads the secret JSON key from Vercel's environment
+GCP_SA_KEY_STRING = os.environ.get("GCP_SA_KEY")
+if not GCP_SA_KEY_STRING:
+    raise ValueError("GCP_SA_KEY environment variable is not set.")
 
-# Your 9 Robot style images
-ROBOT_STYLE_GUIDE_URIS = [
-    f"gs://{BUCKET_NAME}/robot_images/elsa_05.png",
-    f"gs://{BUCKET_NAME}/robot_images/elsa_06.png",
-    f"gs://{BUCKET_NAME}/robot_images/elsa_07.png",
-    f"gs://{BUCKET_NAME}/robot_images/elsa_08.png",
-    f"gs://{BUCKET_NAME}/robot_images/elsa_11.png",
-    f"gs://{BUCKET_NAME}/robot_images/elsa_12.png",
-    f"gs://{BUCKET_NAME}/robot_images/elsa_17.png",
-    f"gs://{BUCKET_NAME}/robot_images/elsa_18.png",
-    f"gs://{BUCKET_NAME}/robot_images/elsa_19.png"
-]
+# Convert the string key into credentials
+try:
+    GCP_CREDENTIALS = service_account.Credentials.from_service_account_info(
+        json.loads(GCP_SA_KEY_STRING)
+    )
+except json.JSONDecodeError:
+    raise ValueError("GCP_SA_KEY is not a valid JSON string.")
 
 # --- 2. INITIALIZE SERVICES ---
-# These use the Application Default Credentials (ADC) you set up
-vertexai.init(project=PROJECT_ID, location=LOCATION)
-storage_client = storage.Client(project=PROJECT_ID)
+# We now initialize everything with our new credentials
+vertexai.init(project=PROJECT_ID, location=LOCATION, credentials=GCP_CREDENTIALS)
+storage_client = storage.Client(project=PROJECT_ID, credentials=GCP_CREDENTIALS)
 output_bucket = storage_client.bucket(BUCKET_NAME)
 
+# Load the models
 image_model = GenerativeModel(model_name="gemini-2.5-flash-image")
 text_model = GenerativeModel(model_name="gemini-2.5-pro") 
 
-# --- 3. ALL YOUR TOOLS (UNCHANGED) ---
-# (I've hidden them for brevity, but this is the same code as your app.py)
+# --- 3. DEFINE YOUR FOUR "TOOLS" ---
 
 def generate_chibi_image(prompt: str) -> dict:
     """Generates an image in the 'elsa_chibi_face' style."""
     print(f"Tool Call: generate_chibi_image('{prompt}')...")
+    CHIBI_STYLE_GUIDE_URIS = [ f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_01.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_02.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_03.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_04.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_10.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_15.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_09_dollar.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_09_heart.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_09_sad.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_13_wink.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_13_star.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_13_sleep.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_13_angry.png", f"gs://{BUCKET_NAME}/chibi_dataset_images/elsa_20_cropped.png" ]
     prompt_parts = [f"Using the {len(CHIBI_STYLE_GUIDE_URIS)} uploaded images as a visual style reference for the 'chibi mascot' character, fulfill this request: '{prompt}'"]
     prompt_parts.extend([Part.from_uri(uri, mime_type="image/png") for uri in CHIBI_STYLE_GUIDE_URIS])
     try:
@@ -71,14 +57,11 @@ def generate_chibi_image(prompt: str) -> dict:
             if part.inline_data:
                 image_bytes = part.inline_data.data
                 break
-        if image_bytes is None:
-            raise Exception("Model did not return an image.")
-        
+        if image_bytes is None: raise Exception("Model did not return an image.")
         file_name = f"outputs/chibi_{uuid.uuid4()}.png"
         blob = output_bucket.blob(file_name)
         blob.upload_from_string(image_bytes, content_type="image/png")
-        blob.make_public()
-        
+        blob.make_public() # This works because your bucket is "Fine-grained"
         return {"type": "image", "content": blob.public_url}
     except Exception as e:
         return {"type": "text", "content": f"Error generating Chibi image: {e}"}
@@ -86,6 +69,7 @@ def generate_chibi_image(prompt: str) -> dict:
 def generate_robot_image(prompt: str) -> dict:
     """Generates an image in the 'elsa_robot' (red robot) style."""
     print(f"Tool Call: generate_robot_image('{prompt}')...")
+    ROBOT_STYLE_GUIDE_URIS = [ f"gs://{BUCKET_NAME}/robot_images/elsa_05.png", f"gs://{BUCKET_NAME}/robot_images/elsa_06.png", f"gs://{BUCKET_NAME}/robot_images/elsa_07.png", f"gs://{BUCKET_NAME}/robot_images/elsa_08.png", f"gs://{BUCKET_NAME}/robot_images/elsa_11.png", f"gs://{BUCKET_NAME}/robot_images/elsa_12.png", f"gs://{BUCKET_NAME}/robot_images/elsa_17.png", f"gs://{BUCKET_NAME}/robot_images/elsa_18.png", f"gs://{BUCKET_NAME}/robot_images/elsa_19.png" ]
     prompt_parts = [f"Using the {len(ROBOT_STYLE_GUIDE_URIS)} uploaded images as a visual style reference for the 'red robot' character, fulfill this request: '{prompt}'"]
     prompt_parts.extend([Part.from_uri(uri, mime_type="image/png") for uri in ROBOT_STYLE_GUIDE_URIS])
     try:
@@ -95,14 +79,11 @@ def generate_robot_image(prompt: str) -> dict:
             if part.inline_data:
                 image_bytes = part.inline_data.data
                 break
-        if image_bytes is None:
-            raise Exception("Model did not return an image.")
-            
+        if image_bytes is None: raise Exception("Model did not return an image.")
         file_name = f"outputs/robot_{uuid.uuid4()}.png"
         blob = output_bucket.blob(file_name)
         blob.upload_from_string(image_bytes, content_type="image/png")
         blob.make_public()
-        
         return {"type": "image", "content": blob.public_url}
     except Exception as e:
         return {"type": "text", "content": f"Error generating Robot image: {e}"}
@@ -117,14 +98,11 @@ def generate_general_image(prompt: str) -> dict:
             if part.inline_data:
                 image_bytes = part.inline_data.data
                 break
-        if image_bytes is None:
-            raise Exception("Model did not return an image.")
-            
+        if image_bytes is None: raise Exception("Model did not return an image.")
         file_name = f"outputs/general_{uuid.uuid4()}.png"
         blob = output_bucket.blob(file_name)
         blob.upload_from_string(image_bytes, content_type="image/png")
         blob.make_public()
-        
         return {"type": "image", "content": blob.public_url}
     except Exception as e:
         return {"type": "text", "content": f"Error generating general image: {e}"}
@@ -169,7 +147,6 @@ def get_agent_decision(user_prompt: str) -> (str, str):
         json_text = response.text.strip().lstrip("```json").rstrip("```")
         decision = json.loads(json_text)
         tool = decision.get("tool", "general").lower()
-        
         if tool not in ['chibi', 'robot', 'diagram', 'general']:
             tool = 'general'
         print(f"Agent decided to use tool: '{tool}'")
@@ -179,8 +156,6 @@ def get_agent_decision(user_prompt: str) -> (str, str):
         return 'general', user_prompt
 
 # --- 5. THE API ENDPOINT ---
-# This is what your frontend will call
-
 class PromptRequest(BaseModel):
     prompt: str
 
