@@ -2,20 +2,28 @@
   "builds": [
     {
       "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxDuration": 60
-      }
+      "use": "@vercel/python"
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "api/index.py"
+      "src": "/api/generate",
+      "dest": "/api/index.py"
     },
     {
       "src": "/(.*)",
-      "dest": "public/index.html"
+      "dest": "/public/$1"
     }
   ]
 }
+```
+
+## Also verify your project structure is EXACTLY like this:
+```
+your-project/
+├── api/
+│   └── index.py
+├── public/
+│   └── index.html
+├── requirements.txt
+└── vercel.json
