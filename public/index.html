@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elsa AI Agent</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f7f6; color: #333; margin: 0; }
+        #chat-container { max-width: 800px; margin: 40px auto; border: 1px solid #ddd; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        #chat-box { height: 60vh; overflow-y: auto; padding: 20px; }
+        #input-area { display: flex; border-top: 1px solid #ddd; }
+        #chat-input { flex-grow: 1; border: none; padding: 15px; font-size: 16px; }
+        #chat-submit { background: #007aff; color: white; border: none; padding: 0 25px; font-size: 16px; cursor: pointer; }
+        #chat-submit.loading { background: #888; }
+        .message { margin-bottom: 15px; }
+        .message.user { text-align: right; }
+        .message-bubble { display: inline-block; padding: 10px 15px; border-radius: 18px; max-width: 70%; }
+        .message.user .message-bubble { background: #007aff; color: white; }
+        .message.bot .message-bubble { background: #e5e5ea; color: black; }
+        .message.bot img { max-width: 100%; border-radius: 10px; margin-top: 10px; }
+        .message.bot pre { background: #222; color: #eee; padding: 10px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <div id="chat-box">
+            <div class="message bot">
+                <span class="message-bubble">Hi! I'm Elsa. You can ask me to create images of our mascots or generate diagrams.</span>
+            </div>
+        </div>
+        <div id="input-area">
+            <input type="text" id="chat-input" placeholder="Type your message...">
+            <button id="chat-submit">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const chatInput = document.getElementById('chat-input');
+        const chatSubmit = document.getElementById('chat-submit');
+
+        // Handle sending messages on button click
+        chatSubmit.addEventListener('click', sendMessage);
+
+        // Handle sending messages on 'Enter' key
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        function sendMessage() {
+            const prompt = chatInput.value;
+            if (!prompt) return;
+
+            // Display user's message
+            renderMessage('user', prompt, 'text');
+            chatInput.value = '';
+            setLoading(true);
+
+            // Call our Backend API
+            fetch('/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Display bot's response
+                renderMessage('bot', data.content, data.type);
+                setLoading(false);
+            })
+            .catch(error => {
+                renderMessage('bot', 'Sorry, an error occurred: ' + error, 'text');
+                setLoading(false);
+            });
+        }
+
+        function renderMessage(sender, content, type) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', sender);
+            
+            let contentHTML = '';
+            
+            if (type === 'image') {
+                // This is how we show the image!
+                contentHTML = `<img src="${content}" alt="Generated Image">`;
+            } else if (type === 'diagram') {
+                // This is how we show the code
+                contentHTML = `<pre>${escapeHTML(content)}</pre>`;
+            } else {
+                // This is for plain text
+                contentHTML = escapeHTML(content);
+            }
+
+            messageElement.innerHTML = `<span class="message-bubble">${contentHTML}</span>`;
+            chatBox.appendChild(messageElement);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function setLoading(isLoading) {
+            chatSubmit.disabled = isLoading;
+            chatSubmit.classList.toggle('loading', isLoading);
+            chatSubmit.textContent = isLoading ? '...' : 'Send';
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>"']/g, function(m) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                }[m];
+            });
+        }
+    </script>
+</body>
+</html>
