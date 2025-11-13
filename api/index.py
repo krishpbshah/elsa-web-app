@@ -16,6 +16,16 @@ app = FastAPI()
 def read_root():
     return {"status": "API is running", "message": "Use POST /generate"}
 
+@app.get("/routes")
+def list_routes():
+    routes = []
+    for route in app.routes:
+        routes.append({
+            "path": route.path,
+            "methods": route.methods if hasattr(route, 'methods') else []
+        })
+    return {"routes": routes}
+
 @app.get("/generate")
 def get_generate():
     return {"error": "Use POST method", "endpoint": "/api/generate"}
