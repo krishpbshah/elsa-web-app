@@ -12,6 +12,14 @@ from datetime import datetime, timedelta
 # This creates your web application
 app = FastAPI()
 
+@app.get("/")
+def read_root():
+    return {"status": "API is running", "message": "Use POST /generate"}
+
+@app.get("/generate")
+def get_generate():
+    return {"error": "Use POST method", "endpoint": "/api/generate"}
+
 # --- 1. CONFIGURATION ---
 # These are now read from Vercel's Environment Variables
 PROJECT_ID = os.environ.get("PROJECT_ID")
@@ -159,7 +167,7 @@ def get_agent_decision(user_prompt: str) -> (str, str):
 class PromptRequest(BaseModel):
     prompt: str
 
-@app.post("/api/generate")
+@app.post("/generate")
 async def handle_generation(request: PromptRequest):
     """
     This is the main API endpoint.
